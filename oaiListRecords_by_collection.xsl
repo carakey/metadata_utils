@@ -9,13 +9,15 @@
        makes a "ListRecord" request per collection given in <setSpec>,
        and saves the results as one XML file of records per collection. 
        
+       The query is repeated for each resumption token.
+       
+       Records with status "deleted" are excluded from the output. 
+       
        Params 'client' and 'metadataPrefix' default to EBRPL digital archive 
        and oai_dc but can be overwritten. 
     -->
 
-    <!-- To Do:
-    Handle resumption tokens!
-    -->
+    <xsl:output method="xml" indent="yes"/>
 
     <xsl:param name="client" select="'https://cdm16340.contentdm.oclc.org'"/>
     <xsl:param name="metadataPrefix" select="'oai_dc'"/>
@@ -33,8 +35,30 @@
                 />
             </xsl:variable>
             <xsl:result-document method="xml" href="{$coll}-{$metadataPrefix}.xml">
-                <xsl:copy-of select="document($query)"/>
-                <xsl:apply-templates select="document($query)//resumptionToken[not(. = '')]"/>
+                <OAI-PMH xmlns="http://www.openarchives.org/OAI/2.0/"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://www.openarchives.org/OAI/2.0/ http://www.openarchives.org/OAI/2.0/OAI-PMH.xsd">
+                    <responseDate>
+                        <xsl:value-of select="current-dateTime()"/>
+                    </responseDate>
+                    <xsl:element name="request">
+                        <xsl:attribute name="verb" select="'ListRecords'"/>
+                        <xsl:attribute name="metadataPrefix" select="$metadataPrefix"/>
+                        <xsl:attribute name="set" select="$coll"/>
+                    </xsl:element>
+                    <ListRecords>
+                        <xsl:for-each select="document($query)//record">
+                            <xsl:choose>
+                                <xsl:when test="header/@status = 'deleted'"/>
+                                <xsl:otherwise>
+                                    <xsl:copy-of select="."/>
+                                </xsl:otherwise>
+                            </xsl:choose>
+                        </xsl:for-each>
+                        <xsl:apply-templates select="document($query)//resumptionToken[not(. = '')]"
+                        />
+                    </ListRecords>
+                </OAI-PMH>
             </xsl:result-document>
         </xsl:for-each>
     </xsl:template>
@@ -43,7 +67,14 @@
         <xsl:variable name="token" select="."/>
         <xsl:variable name="tokenQuery"
             select="concat($client,'/oai/oai.php?verb=ListRecords&amp;resumptionToken=',$token)"/>
-        <xsl:copy-of select="document($tokenQuery)"/>
+        <xsl:for-each select="document($tokenQuery)//record">
+            <xsl:choose>
+                <xsl:when test="header/@status = 'deleted'"/>
+                <xsl:otherwise>
+                    <xsl:copy-of select="."/>
+                </xsl:otherwise>
+            </xsl:choose>
+        </xsl:for-each>
         <xsl:apply-templates select="document($tokenQuery)//resumptionToken[not(. = '')]"/>
     </xsl:template>
 
